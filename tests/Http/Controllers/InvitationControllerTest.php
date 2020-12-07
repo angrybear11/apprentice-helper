@@ -140,9 +140,91 @@ jGOG++N1ukUFL60RTzFbV+mN/LP+jeZe8rE/cNOwQi8tFzulBEPqw94NOg==
         $this->assertNull($deletedInvitation);
 
         // Check new user
-        $newestUser = User::orderby('created_at', 'desc')->first();
+        $newestUser = User::orderby('id', 'desc')->first();
         $this->assertEquals('a-unique-key', $newestUser->keyId);
         $this->assertEquals(InvitationControllerTest::$publicKey, $newestUser->publicKey);
+
+        $response
+          ->assertStatus(201)
+          ->assertSee('Created Successfully');
+    }
+
+    public function testDuplicateFriendlyNameAddsNumbers()
+    {
+        $this->withoutMiddleware(SignatureAuthentication::class);
+
+        $invitation = new Invitation;
+        $invitation->created_at = Carbon::now();
+        $invitation->token = '123';
+        $invitation->save();
+
+        $existingUser = new User;
+        $existingUser->keyId        = "1";
+        $existingUser->friendlyName = "Picasso";
+        $existingUser->publicKey    = "1";
+        $existingUser->save();
+
+        $response = $this->postJson('/apprentice/accept-invitation', [
+          'keyId'        => 'a-unique-key',
+          'token'        => '123',
+          'friendlyName' => "Picasso",
+          'publicKey'    => InvitationControllerTest::$publicKey,
+        ]);
+
+        $newestUser = User::orderby('id', 'desc')->first();
+        $this->assertEquals('Picasso (1)', $newestUser->friendlyName);
+
+        $response
+          ->assertStatus(201)
+          ->assertSee('Created Successfully');
+
+        // Check a second user
+        $invitation = new Invitation;
+        $invitation->created_at = Carbon::now();
+        $invitation->token = '1234';
+        $invitation->save();
+
+        $this->postJson('/apprentice/accept-invitation', [
+          'keyId'        => 'another-unique-key',
+          'token'        => '1234',
+          'friendlyName' => "Picasso",
+          'publicKey'    => InvitationControllerTest::$publicKey,
+        ]);
+
+        // Check new user
+        $newestUser = User::orderby('id', 'desc')->first();
+        $this->assertEquals('Picasso (2)', $newestUser->friendlyName);
+    }
+
+    public function testDuplicateFriendlyNameOver255Characters()
+    {
+        $this->withoutMiddleware(SignatureAuthentication::class);
+
+        $invitation = new Invitation;
+        $invitation->created_at = Carbon::now();
+        $invitation->token = '123';
+        $invitation->save();
+
+        $longFriendlyName = str_repeat("A", 255);
+
+        $existingUser = new User;
+        $existingUser->keyId        = "1";
+        $existingUser->friendlyName = $longFriendlyName;
+        $existingUser->publicKey    = "1";
+        $existingUser->save();
+
+
+
+        $response = $this->postJson('/apprentice/accept-invitation', [
+          'keyId'        => 'a-unique-key',
+          'token'        => '123',
+          'friendlyName' => $longFriendlyName,
+          'publicKey'    => InvitationControllerTest::$publicKey,
+        ]);
+
+        $newestUser = User::orderby('id', 'desc')->first();
+        $expectedName = str_repeat("A", 251) . " (1)";
+        $this->assertEquals($expectedName, $newestUser->friendlyName);
 
         $response
           ->assertStatus(201)

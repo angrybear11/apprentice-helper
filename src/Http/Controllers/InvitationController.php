@@ -38,10 +38,23 @@ class InvitationController extends ViewController
                 return response()->json('Invitation has expired', 403);
             }
 
-            DB::transaction(function () use ($request, $invitation) {
+            // Get a unique friendly name. If there's a duplicate add a number.
+            $name = $request->get('friendlyName');
+            $count = 0;
+            while (User::where('friendlyName', $name)->exists()) {
+                $count += 1;
+                $uniqueExtension = " ($count)";
+                // Build `friendlyName (num)` string but restrict to
+                // 255 characters by shortening friendlyName if necessary
+                $maxLength = 255 - strlen($uniqueExtension);
+                $baseName = substr($request->get('friendlyName'), 0, $maxLength);
+                $name = $baseName . $uniqueExtension;
+            }
+
+            DB::transaction(function () use ($request, $invitation, $name) {
                 $user = new User;
                 $user->keyId        = $request->get('keyId');
-                $user->friendlyName = $request->get('friendlyName');
+                $user->friendlyName = $name;
                 $user->publicKey    = $request->get('publicKey');
                 $user->save();
                 $invitation->delete();
